@@ -1,339 +1,372 @@
-# Repository MCP Server
+# Agentic Software Investigator
 
-A read-only MCP server for navigating, searching, inspecting Git history, and
-discovering dependencies inside one configured repository. It also includes a
-multi-server MCP client manager and a minimal OpenAI tool-calling assistant
-without LangGraph.
+An evidence-driven, multi-agent platform for investigating software repositories, identifying likely root causes, and producing human-approved code patches.
 
-## Install
+Built with **Model Context Protocol (MCP)**, **LangGraph**, **FastAPI**, **React**, and **Qdrant**.
+
+> This project is a local prototype and portfolio project. It demonstrates the complete investigation workflow, but requires additional security and infrastructure work before production deployment.
+
+## Overview
+
+Agentic Software Investigator turns a bug report or code question into a structured, auditable investigation. Specialized agents inspect source code, search technical documentation, optionally review GitHub history, form competing hypotheses, and explain their conclusions using file- and line-level evidence.
+
+Source-code analysis is read-only. Any proposed modification is isolated behind a separate Patch MCP server and requires explicit human approval before it can be applied.
+
+## Key Features
+
+- Read-only repository navigation, code search, Git inspection, and dependency discovery
+- Evidence-driven bug investigation with precise source provenance
+- Multi-agent orchestration with bounded investigation loops
+- Competing root-cause hypotheses with confidence scores and statuses
+- Documentation retrieval using literal search and Qdrant semantic search
+- Optional GitHub issue, pull request, commit, and discussion history
+- Immutable patch proposals with validation and human approval
+- FastAPI REST API with interactive Swagger documentation
+- Responsive React investigation dashboard
+- Repository-boundary protections for filesystem operations
+- Automated tests for MCP tools, agents, API workflows, and patch safety
+
+## How It Works
+
+```text
+Bug report or code question
+          |
+          v
+      Supervisor
+          |
+          +--> Code Analyst ----------> Repository MCP
+          |
+          +--> Documentation Agent ---> Knowledge MCP / Qdrant
+          |
+          +--> GitHub History Agent --> GitHub MCP (optional)
+          |
+          v
+    Bug Investigator
+          |
+          +--> More evidence required? --> Repeat bounded cycle
+          |
+          v
+ Evidence-backed report
+          |
+          v
+ Patch proposal --> Validation --> Human approval --> Apply
+```
+
+The supervisor stops when sufficient evidence supports a conclusion or when the configured iteration limit is reached. Reaching the limit does not automatically promote an unverified hypothesis to a root cause.
+
+## MCP Servers
+
+### Repository MCP
+
+A read-only interface to the configured source repository.
+
+- Navigate directories and read files
+- Search code, filenames, imports, and symbols
+- Inspect repository structure and file metadata
+- Read Git status, logs, diffs, commits, and blame information
+- Discover project dependencies and versions
+
+### Knowledge MCP
+
+Searches internal and technical documentation.
+
+- Literal documentation search
+- Library documentation and API-reference lookup
+- Qdrant semantic search
+- Related-document discovery
+- Documentation and repository index refresh
+
+The default configuration uses embedded Qdrant storage and a deterministic local hashing embedder. It does not require an external embedding API.
+
+### Patch MCP
+
+Separates write operations from repository analysis.
+
+1. `generate_diff` creates an immutable proposal without changing the file.
+2. `validate_patch` checks the path boundary, source hash, diff, and Python syntax.
+3. `apply_patch` writes the exact validated proposal after explicit approval.
+
+### GitHub MCP (optional)
+
+GitHub's official MCP server can be launched through Docker in read-only and lockdown modes. It provides historical context from issues, pull requests, commits, discussions, and code search.
+
+## Technology Stack
+
+| Area | Technologies |
+|---|---|
+| Backend | Python, FastAPI, Uvicorn |
+| Agent orchestration | LangGraph |
+| Tool protocol | Model Context Protocol (MCP) |
+| Vector retrieval | Qdrant, local hashing embedder |
+| Optional LLM assistant | OpenAI Responses API |
+| Frontend | React, TypeScript, Vite |
+| Testing | Python `unittest` |
+
+## Project Structure
+
+```text
+.
+|-- api/                       # FastAPI routes, models, and local store
+|-- frontend/                  # React and Vite investigation console
+|-- knowledge_base/            # Bundled technical documentation
+|-- mcp_clients/               # MCP sessions, registry, and routing
+|-- mcp_servers/
+|   |-- knowledge/             # Documentation and semantic-search tools
+|   |-- patch/                 # Validated, approval-gated write tools
+|   `-- repository/            # Read-only repository inspection tools
+|-- sample_repos/              # Vulnerable sample application
+|-- services/
+|   |-- agents/                # Supervisor and specialist agents
+|   `-- investigation/         # Plans, evidence, hypotheses, and reports
+|-- tests/                     # Automated test suite
+|-- investigate.py             # Standalone investigation CLI
+|-- langgraph_app.py           # Multi-agent CLI
+|-- patch_workflow.py           # Interactive patch approval CLI
+`-- repository_assistant.py    # OpenAI tool-calling assistant
+```
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.11 or newer
+- Node.js and npm
+- Git
+- Docker Desktop only if using the optional GitHub MCP integration
+
+### 1. Clone and enter the repository
+
+```powershell
+git clone <your-repository-url>
+cd agentic-software-investigator
+```
+
+### 2. Create the Python environment
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-The default root is `sample_repos/vulnerable-fastapi-app`. Override it before
-starting the server when you want to inspect another repository:
+### 3. Install frontend dependencies
 
 ```powershell
-$env:REPOSITORY_ROOT = "C:\path\to\project"
+cd frontend
+npm.cmd install
+cd ..
 ```
 
-Every filesystem tool rejects absolute paths and paths that resolve outside
-this root.
+`npm.cmd` is used in the examples because some Windows PowerShell configurations block the `npm.ps1` wrapper.
 
-## Inspect the MCP server
+## Run the Web Application
+
+### Start the backend
+
+In the first PowerShell terminal, from the project root:
 
 ```powershell
-mcp dev mcp_servers/repository/server.py:mcp
+.\.venv\Scripts\Activate.ps1
+$env:REPOSITORY_ALLOWED_ROOT = (Resolve-Path ".").Path
+python -m uvicorn api.main:app --reload
 ```
 
-Available tools:
+Available endpoints:
 
-- Navigation: `list_directory`, `read_file`, `get_repository_structure`,
-  `get_file_metadata`
-- Search: `search_code`, `find_files`, `search_imports`, `find_symbol`
-- Git: `git_status`, `git_log`, `git_diff`, `git_show_commit`, `git_blame`
-- Dependencies: `get_dependencies`, `find_dependency`, `get_dependency_version`
+- API: `http://127.0.0.1:8000`
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- Health check: `http://127.0.0.1:8000/health`
 
-Resources are `repo://structure` and `repo://file/{path}`. For example, read
-`repo://file/app/api/auth.py`.
+### Start the frontend
 
-## MCP manager
+In a second PowerShell terminal:
 
-`MCPRegistry` stores launch configurations, `MCPSession` owns one connection,
-and `MCPManager` owns and routes all registered sessions. Tools are namespaced
-as `server__tool`, such as `repository__read_file`, to prevent collisions when
-more servers are added.
+```powershell
+cd frontend
+npm.cmd run dev
+```
 
-## Ask the LLM
+Open `http://localhost:5173`.
 
-Set an API key and run the assistant:
+The Vite development server proxies `/api` requests to `http://127.0.0.1:8000`.
+
+### Try an investigation
+
+Connect the bundled sample repository:
+
+```text
+<project-root>\sample_repos\vulnerable-fastapi-app
+```
+
+Example investigation request:
+
+```text
+Login returns 401 after token refresh.
+```
+
+The dashboard displays investigation progress, collected evidence, ranked hypotheses, the root-cause decision, recommendations, and any patch proposal.
+
+## Command-Line Usage
+
+### Run a multi-agent investigation
+
+```powershell
+python langgraph_app.py "Login returns 401 after token refresh."
+```
+
+Write the result to a file and control the investigation limit:
+
+```powershell
+python langgraph_app.py "Login returns 401 after token refresh." `
+  --max-iterations 3 `
+  --output supervisor-report.md
+```
+
+Ask a code question:
+
+```powershell
+python langgraph_app.py "Where is authentication implemented?"
+```
+
+Disable knowledge retrieval when only local source evidence is needed:
+
+```powershell
+python langgraph_app.py "Where is authentication implemented?" --no-knowledge
+```
+
+Refresh the Qdrant index after changing code or documentation:
+
+```powershell
+python langgraph_app.py "Analyze authentication" --refresh-index
+```
+
+### Run the standalone investigation engine
+
+```powershell
+python investigate.py "Login returns 401 after token refresh."
+```
+
+### Run the OpenAI repository assistant
+
+Set an API key in the current terminal:
 
 ```powershell
 $env:OPENAI_API_KEY = "your-api-key"
 python repository_assistant.py "Where is authentication implemented?"
 ```
 
-Select a different model or repository when needed:
+Do not commit API keys or tokens to the repository.
 
-```powershell
-python repository_assistant.py "Where is authentication implemented?" `
-  --model gpt-5.4 `
-  --repository C:\path\to\project
-```
-
-The assistant passes MCP tool schemas to the OpenAI Responses API, executes
-requested calls through `MCPManager`, returns each result to the model, and
-continues until the model produces its answer. No LangGraph or agent framework
-is involved.
-
-## Investigate a bug
-
-The investigation service builds an explicit plan, collects file/line evidence,
-forms competing hypotheses, scores confidence, and renders an auditable report:
-
-```powershell
-python investigate.py "Login returns 401 after refresh."
-```
-
-Write the report to a file or inspect another repository:
-
-```powershell
-python investigate.py "Login returns 401 after refresh." `
-  --repository C:\path\to\project `
-  --output investigation.md
-```
-
-Hypotheses use `unverified`, `supported`, `contradicted`, or `confirmed` status.
-Only an explicitly reproduced hypothesis is marked `confirmed`; code evidence
-alone can mark it `supported`.
-
-## LangGraph supervisor
-
-The supervised graph routes requests through a Code Analyst and, for bug
-reports, a Bug Investigator. The supervisor can send the case back to the Code
-Analyst for missing evidence before producing the final report.
-
-```text
-START -> Supervisor -> Code Analyst -> Bug Investigator -> Supervisor
-                          ^                                  |
-                          +-------- more evidence -----------+
-                                                             |
-                                                        Synthesize -> END
-```
-
-For bug investigations this is a bounded, evidence-driven loop. Each cycle
-runs the Code Analyst and every enabled context specialist, then the Bug
-Investigator ranks hypotheses and asks for precise missing evidence. The
-Supervisor records an auditable decision for every iteration:
-
-```text
-Supervisor
-    -> Code Analyst -> Repository MCP
-    -> Documentation Agent -> Knowledge MCP / Qdrant
-    -> GitHub History Agent -> GitHub MCP
-    -> Bug Investigator -> hypotheses + evidence requests
-    -> enough evidence?
-         no  -> repeat the specialist cycle
-         yes -> root cause + recommendations
-```
-
-The loop stops when a supported hypothesis passes the evidence threshold or
-when `--max-iterations` is reached. Reaching the limit never turns an
-unverified hypothesis into a root cause. The report includes the termination
-reason, per-cycle evidence counts, the root-cause decision, and recommendations.
-
-Run a bug investigation:
-
-```powershell
-python langgraph_app.py "Login returns 401 after refresh."
-```
-
-Run a code question, which bypasses the Bug Investigator:
-
-```powershell
-python langgraph_app.py "Where is authentication implemented?"
-```
-
-Use `--max-iterations` to bound evidence delegation and `--output report.md`
-to save the supervisor report. The graph itself does not require an API key;
-its nodes use the Repository MCP and the evidence/confidence models directly.
-
-If LangSmith tracing is configured in your shell but you are working offline,
-disable it for the current PowerShell session:
-
-```powershell
-$env:LANGSMITH_TRACING = "false"
-$env:LANGCHAIN_TRACING_V2 = "false"
-```
-
-## GitHub history through the official MCP server
-
-The optional GitHub History Agent uses GitHub's official MCP Docker image. It
-is restricted to the `repos`, `issues`, `pull_requests`, and `discussions` toolsets and starts
-with both read-only and lockdown modes enabled.
+## Optional GitHub History Integration
 
 Prerequisites:
 
 1. Install and start Docker Desktop.
-2. Create a fine-grained GitHub token with read access only to the repositories
-   the agent may investigate.
-3. Put the token in the process environment, never in source code:
+2. Create a fine-grained GitHub token with read access only to the required repositories.
+3. Set the token in the current shell.
 
 ```powershell
 $env:GITHUB_PERSONAL_ACCESS_TOKEN = "your-token"
-```
-
-Run the complete local-code plus GitHub-history investigation:
-
-```powershell
-python langgraph_app.py "Login returns 401 after refresh." `
+python langgraph_app.py "Login returns 401 after token refresh." `
   --github OWNER/REPOSITORY `
   --output supervisor-report.md
 ```
 
-The History Agent can call `search_issues`, `issue_read`,
-`search_pull_requests`, `pull_request_read`, `list_commits`, `get_commit`, and
-`search_code`, `list_discussions`, and `get_discussion`. GitHub content is recorded as historical evidence; general code
-analysis remains the responsibility of the local Code Analyst.
+The token is passed to the official GitHub MCP container and should never be stored in source code.
 
-## Knowledge MCP and Documentation Agent
+## Inspect the MCP Servers
 
-The Knowledge MCP exposes technical and internal documentation under a separate
-read-only `KNOWLEDGE_ROOT`. Its tools are `search_docs`, `search_library_docs`,
-`get_document`, `get_api_reference`, `semantic_search`, `refresh_index`, and
-`find_related_documents`.
-
-The default documentation root is `knowledge_base`. The Documentation Agent is
-enabled by default in `langgraph_app.py` and runs after local code analysis:
-
-```text
-Code Analyst -> Documentation Agent -> GitHub History Agent -> Bug Investigator
-```
-
-Run with the bundled documentation:
+Activate the virtual environment, then launch an MCP development inspector:
 
 ```powershell
-python langgraph_app.py "Login returns 401 after refresh."
-```
-
-Use an internal documentation directory:
-
-```powershell
-python langgraph_app.py "Login returns 401 after refresh." `
-  --knowledge-root "C:\path\to\internal-docs"
-```
-
-Use `--no-knowledge` when only repository evidence should be collected.
-
-## Qdrant RAG
-
-`semantic_search` uses Qdrant to find candidate documentation and repository
-chunks. The default is embedded local Qdrant storage in `.qdrant_data`; no
-embedding API is required because indexing uses a deterministic local hashing
-embedder. Rebuild the index after code or documentation changes:
-
-```powershell
-python langgraph_app.py "Login returns 401 after refresh." --refresh-index
-```
-
-Each Qdrant payload preserves provenance including `source`, `path`,
-`language`, `symbol`, `start_line`, and `end_line`. Repository results are not
-accepted as authoritative evidence directly. The Documentation Agent uses them
-as candidates, calls Repository MCP `read_file`, and records evidence from the
-current file only. Literal documentation searches also remain enabled, so the
-agent does not rely exclusively on RAG.
-
-To use a running Qdrant server instead of embedded storage:
-
-```powershell
-$env:QDRANT_URL = "http://localhost:6333"
-$env:QDRANT_API_KEY = "optional-api-key"
-python langgraph_app.py "Login returns 401 after refresh." --refresh-index
-```
-
-You can override the embedded database directory with `QDRANT_PATH`, and the
-collection name with `QDRANT_COLLECTION`.
-
-Inspect the Knowledge MCP directly:
-
-```powershell
+mcp dev mcp_servers/repository/server.py:mcp
 mcp dev mcp_servers/knowledge/server.py:mcp
 ```
 
-## Human-approved patch workflow
-
-Repository MCP remains read-only. Code changes live behind a separate Patch
-MCP with three tools:
-
-- `generate_diff(path, new_content)` creates an immutable proposal.
-- `validate_patch(proposal_id)` checks the repository boundary, source hash,
-  non-empty diff, and Python syntax without writing.
-- `apply_patch(proposal_id, approval)` writes atomically, but only for the exact
-  validated proposal and approval phrase.
-
-`PatchApprovalWorkflow` uses a LangGraph checkpointer and `interrupt()`. It
-always stops at `WAITING_FOR_APPROVAL` after displaying the diff. A human can
-reject it, request changes with feedback, or approve it. Reject and request
-changes finish without touching the repository; only an explicit `approve`
-resume reaches `apply_patch`.
-
-To review a complete replacement for one file, put the proposed content in a
-temporary review file and run:
+For the Patch MCP, configure the repository root first:
 
 ```powershell
-python patch_workflow.py app/services/auth_service.py `
-  --content-file proposed_auth_service.py `
-  --repository sample_repos/vulnerable-fastapi-app
+$env:REPOSITORY_ROOT = (Resolve-Path "sample_repos/vulnerable-fastapi-app").Path
+mcp dev mcp_servers/patch/server.py:mcp
 ```
 
-The unified diff is printed before the prompt. Entering anything other than an
-allowed decision is treated as rejection. Inspect the Patch MCP independently
-with `mcp dev mcp_servers/patch/server.py:mcp` after setting
-`REPOSITORY_ROOT`.
+## Configuration
 
-## FastAPI service
+| Variable | Purpose | Default |
+|---|---|---|
+| `REPOSITORY_ROOT` | Repository used by local MCP and CLI operations | Bundled sample repository |
+| `REPOSITORY_ALLOWED_ROOT` | Highest directory the API may connect to | Current working directory |
+| `KNOWLEDGE_ROOT` | Documentation directory | `knowledge_base` |
+| `QDRANT_PATH` | Embedded Qdrant storage path | `.qdrant_data` |
+| `QDRANT_URL` | External Qdrant server URL | Not set |
+| `QDRANT_API_KEY` | Optional external Qdrant credential | Not set |
+| `QDRANT_COLLECTION` | Vector collection name | Project default |
+| `CORS_ORIGINS` | Comma-separated allowed frontend origins | Local development origin |
+| `OPENAI_API_KEY` | OpenAI key for `repository_assistant.py` | Not set |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | GitHub MCP credential | Not set |
 
-Start the investigation API from the project root:
+## Testing
 
-```powershell
-$env:REPOSITORY_ALLOWED_ROOT = (Resolve-Path ".").Path
-uvicorn api.main:app --reload
-```
-
-Swagger UI is available at `http://127.0.0.1:8000/docs`. The primary lifecycle
-is:
-
-1. `POST /repositories/connect`
-2. `POST /investigations` (returns `202`; poll the returned ID)
-3. `GET /investigations/{id}`
-4. Inspect `/evidence` and `/hypotheses`
-5. `POST /investigations/{id}/patch` with a target path and proposed content
-6. Inspect `GET /investigations/{id}/patch`
-7. Call `/approve`, `/reject`, or `/request-changes`
-
-Also available: `GET /health`. Patch generation requires a confirmed hypothesis
-by default. `require_confirmed: false` is an explicit caller override, but human
-approval is still mandatory. Invalid lifecycle transitions return `409`.
-
-Repositories must be beneath `REPOSITORY_ALLOWED_ROOT`; do not expose this API
-without authentication and authorization. The current repository and
-investigation store is process-local, intended for this learning stage. Use a
-database and durable job/checkpoint backend before running multiple API workers
-or deploying to production.
-
-## React investigation console
-
-The `frontend` directory contains a responsive React/Vite dashboard for the
-complete API lifecycle: repository connection, background status polling,
-evidence and hypothesis review, root-cause results, unified patch diffs, and
-human approval decisions.
-
-Run the API in one PowerShell terminal:
+Run the backend and MCP test suite:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
-$env:REPOSITORY_ALLOWED_ROOT = (Resolve-Path ".").Path
-uvicorn api.main:app --reload
+python -m unittest discover -s tests -v
 ```
 
-Run the frontend in another terminal:
+Build the frontend:
 
 ```powershell
 cd frontend
-npm install
-npm run dev
+npm.cmd run build
 ```
 
-Open `http://localhost:5173`. Vite proxies `/api` to
-`http://127.0.0.1:8000`. For a separately hosted build, set `VITE_API_URL` to
-the FastAPI origin before `npm run build`, and include the frontend origin in
-the API's comma-separated `CORS_ORIGINS` environment variable.
+The current suite contains 22 tests covering repository boundaries, MCP protocol access, investigation logic, agent routing, knowledge retrieval, GitHub-agent restrictions, API lifecycles, and human-approved patch behavior.
 
-## Tests
+## Security Design
 
-```powershell
-python -m unittest discover -s tests -v
-```
+- Repository and knowledge paths are resolved against configured roots.
+- Absolute paths and traversal outside those roots are rejected.
+- Repository analysis tools are read-only.
+- Patch generation and application are separated into another MCP server.
+- Proposals are validated against the original file hash before application.
+- Only an exact human approval decision can reach the write operation.
+- GitHub integration uses read-only and lockdown modes.
+
+These controls reduce risk but do not replace application-level authentication, authorization, isolation, and audit infrastructure.
+
+## Current Status and Limitations
+
+The core workflow is implemented and suitable for local demonstrations, learning, and portfolio use. It is not production-ready yet.
+
+Known limitations:
+
+- API records and investigation state are process-local and disappear on restart.
+- Multiple API workers cannot safely share the current store.
+- Authentication and authorization are not implemented.
+- Background work does not use a durable job queue.
+- Production monitoring, rate limiting, and secrets management are not configured.
+- Deployment and continuous-integration pipelines are not included.
+- The included `docker-compose.yml` and `.env.example` are starter placeholders.
+
+Production deployment would require a persistent database, durable task processing and checkpoints, access control, operational observability, secure secret storage, and deployment automation.
+
+## Documentation
+
+See [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) for a compact project description suitable for reports, portfolios, and presentations.
+
+## Future Improvements
+
+- Persistent PostgreSQL storage for repositories and investigations
+- Durable background workers and LangGraph checkpoints
+- User authentication and role-based access control
+- LLM-assisted hypothesis generation with configurable providers
+- Containerized local deployment
+- CI/CD and automated security scanning
+- Investigation export and team collaboration
+- More language-aware code parsing and symbol analysis
+
+## License
+
+No license has been selected yet. Add a `LICENSE` file before distributing or accepting external contributions.

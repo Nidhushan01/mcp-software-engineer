@@ -1,7 +1,40 @@
-.qdrant_data/
-__pycache__/
-*.pyc
+# Environment variables and secrets
 .env
+.env.*
+!.env.example
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python caches and tooling
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local databases and application state
+.qdrant_data/
+
+# Frontend dependencies and generated output
 frontend/node_modules/
 frontend/dist/
-[PROJECT_SUMMARY.md](C:/Users/ASUS/Videos/CV_Projects/mcp_ver2/mcp-software-engineer/PROJECT_SUMMARY.md).
+frontend/.vite/
+*.tsbuildinfo
+
+# IDE and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+~$*
