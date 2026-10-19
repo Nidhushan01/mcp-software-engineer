@@ -1,0 +1,7 @@
+.qdrant_data/
+__pycache__/
+*.pyc
+.env
+frontend/node_modules/
+frontend/dist/
+[PROJECT_SUMMARY.md](C:/Users/ASUS/Videos/CV_Projects/mcp_ver2/mcp-software-engineer/PROJECT_SUMMARY.md).
